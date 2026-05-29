@@ -1,22 +1,27 @@
 # Byulie
 
-Local voice AI assistant for **Windows 11 64-bit** — [github.com/JinParkmida/Byulie](https://github.com/JinParkmida/Byulie).
+**A personal, local voice assistant built on Windows — for learning, not distribution.**
 
-Byulie is an anime-focused local AI assistant project. She listens, remembers your conversations, responds with a local Ollama language model, and speaks through a local GPT-SoVITS voice server.
+Byulie is my hands-on exploration of how a voice AI pipeline fits together: speech recognition, language modeling, speech synthesis, and lightweight memory — all running on my own machine without paid or hosted AI APIs.
 
-> **MVP privacy/cost rule:** Byulie's default MVP uses **no paid APIs** and **no hosted AI services**. Ollama, Faster-Whisper, GPT-SoVITS, and the JSON memory file all run locally on your Windows 11 64-bit machine.
+---
 
-## What Byulie Does
+## Contents
 
-Byulie is designed to behave like a voice-enabled desktop companion:
+- [Overview](#overview)
+- [Pipeline](#pipeline)
+- [Stack](#stack)
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Troubleshooting](#troubleshooting)
+- [Learning goals](#learning-goals)
+- [Acknowledgments](#acknowledgments)
 
-1. You speak into your microphone.
-2. Faster-Whisper transcribes your speech locally.
-3. Ollama runs `qwen3:4b` locally to generate Byulie's response.
-4. GPT-SoVITS synthesizes the response through a local TTS server.
-5. The conversation is saved to local JSON memory.
+---
 
-## Default MVP Stack
+## Overview
 
 | Layer | Default | Notes |
 | --- | --- | --- |
@@ -64,9 +69,151 @@ Suggested starting point:
 
 For 8 GB VRAM systems, start with `qwen3:4b` before trying larger local models. Running a larger LLM, Faster-Whisper on GPU, and GPT-SoVITS at the same time may exceed available VRAM.
 
+| Principle | Detail |
+| --- | --- |
+| **Scope** | Personal study project — private, experimental, not maintained for public use |
+| **Platform** | Windows 11 64-bit (primary target) |
+| **Privacy** | No paid APIs, no hosted inference — Ollama, Faster-Whisper, and GPT-SoVITS stay on `127.0.0.1` |
+| **Config** | `character_config.yaml` controls LLM, ASR, TTS, prompts, and memory |
+
+---
+
+## Pipeline
+
+```mermaid
+flowchart LR
+    A[Microphone] --> B[Faster-Whisper]
+    B --> C[Ollama LLM]
+    C --> D[GPT-SoVITS]
+    D --> E[Audio playback]
+    C --> F[JSON memory]
+```
+
+1. Audio is captured from the microphone.
+2. **Faster-Whisper** transcribes speech locally.
+3. **Ollama** (`qwen3:4b` by default) generates a reply.
+4. **GPT-SoVITS** synthesizes voice output locally.
+5. The exchange is appended to `byulie_chat_history.json`.
+
+---
+
+## Stack
+
+| Layer | Default | Role |
+| --- | --- | --- |
+| OS | Windows 11 | Development and runtime environment |
+| LLM | Ollama + `qwen3:4b` | Local chat completion |
+| ASR | Faster-Whisper `base.en` (CPU) | Speech-to-text |
+| TTS | GPT-SoVITS @ `:9880` | Text-to-speech |
+| Memory | `byulie_chat_history.json` | Conversation history |
+| UI | Gradio (`client/app.py`) | Optional local web interface |
+
+**Suggested hardware:** 16 GB RAM, SSD, working mic/speakers. An NVIDIA GPU with 8 GB+ VRAM helps; on 8 GB VRAM, keep ASR on CPU and start with `qwen3:4b`.
+
+---
+
+## Prerequisites
+
+Install and verify before setup:
+
+| Requirement | Verify |
+| --- | --- |
+| Python 3.10 or 3.11 (PATH enabled) | `python --version` |
+| FFmpeg on PATH | `ffmpeg -version` |
+| [Ollama for Windows](https://ollama.com/download/windows) | `ollama --version` |
+| GPT-SoVITS (local install + HTTP server) | Endpoint reachable at configured URL |
+| NVIDIA driver *(optional)* | `nvidia-smi` |
+
+---
+
+## Setup
+
+Run from the **project root** in PowerShell.
+
+### 1 · Virtual environment
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+```
+
+If activation is blocked:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+### 2 · Dependencies
+
+```powershell
+pip install -r requirements.txt
+pip install -r extra-req.txt
+```
+
+### 3 · Ollama model
+
+```powershell
+ollama pull qwen3:4b
+ollama serve
+```
+
+Confirm in a second window: `ollama run qwen3:4b` (exit when done).
+
+### 4 · GPT-SoVITS
+
+Start your local GPT-SoVITS server so it matches the default endpoint:
+
+```text
+http://127.0.0.1:9880/tts
+```
+
+Keep the GPT-SoVITS server running while Byulie is active.
+
+### 7. Run Byulie
+
+The easiest Windows launcher is the included batch file. Double-click it from File Explorer, or run it from PowerShell in the project root:
+
+```powershell
+.\start-byulie.bat
+```
+
+The launcher calls `scripts/start_byulie.ps1`, creates `.venv` if needed, installs `requirements.txt`, checks whether Ollama is available, and then starts the voice chat. You can also run the Python entry point manually after activating the virtual environment:
+
+```powershell
+python server/main_chat.py
+```
+
+Expected runtime flow:
+
+1. Byulie starts the chat loop.
+2. The microphone captures your speech.
+3. Faster-Whisper transcribes the recorded audio locally.
+4. Ollama generates a local response with `qwen3:4b`.
+5. GPT-SoVITS generates the voice response locally.
+6. Byulie plays the generated audio and updates local JSON memory.
+
+### 8. Launch the Local Web Interface (Optional)
+
+From the repository root on Windows, launch the web interface with:
+
+```powershell
+.\start-byulie.bat -Mode web
+```
+
+You can also run it manually with the virtual environment activated:
+
+```powershell
+python client/app.py
+```
+
+Gradio prints a local browser URL such as:
+
+---
+
 ## Configuration
 
-Byulie reads runtime settings from `character_config.yaml`.
+Settings live in `character_config.yaml` at the project root.
 
 ```yaml
 character:
@@ -104,265 +251,76 @@ tts:
   prompt_text: "This is a sample voice for you to just get started with because it sounds kind of cute but just make sure this doesn't have long silences."
 ```
 
-Important defaults:
+| Key | Must align with |
+| --- | --- |
+| `llm.base_url` | Running Ollama instance |
+| `llm.model` | Model pulled via `ollama pull` |
+| `tts.endpoint` | Local GPT-SoVITS server URL |
+| `tts.ref_audio_path` | Existing reference audio on disk |
+| `asr.device` | `cpu` recommended when VRAM is tight |
 
-- `llm.base_url` must match your local Ollama server.
-- `llm.model` should match the model you pulled with Ollama.
-- `asr.model` controls the Faster-Whisper model downloaded and cached locally.
-- `asr.device: "cpu"` is the safest default for conserving GPU VRAM.
-- `tts.endpoint` must match your local GPT-SoVITS server URL.
-- `history_file` controls where local JSON memory is stored.
+---
 
-## Step-by-Step Windows Setup
+## Usage
 
-Run these commands from **PowerShell on Windows 11 64-bit** unless noted otherwise. The recommended launcher validates Windows 11 64-bit and 64-bit Python before starting Byulie.
+Activate the virtual environment first: `.\.venv\Scripts\Activate.ps1`
 
-### 1. Clone the Repository
-
-```powershell
-git clone https://github.com/JinParkmida/Byulie.git
-cd Byulie
-```
-
-If you already cloned the repository, open PowerShell in the project root instead.
-
-### 2. Create a Python Virtual Environment
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-```
-
-If PowerShell blocks activation scripts, run this once for your user account and then activate again:
-
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
-### 3. Install Dependencies
-
-```powershell
-pip install -r requirements.txt
-```
-
-If your environment uses an additional project-specific dependency file, install it after the main requirements file:
-
-```powershell
-pip install -r extra-req.txt
-```
-
-Only run the second command if `extra-req.txt` exists in your checkout.
-
-### 4. Pull the Default Ollama Model
-
-```powershell
-ollama pull qwen3:4b
-```
-
-This downloads the default local LLM used by Byulie.
-
-### 5. Start Ollama
-
-Ollama for Windows often runs in the background after installation. If it is not already running, start it with:
-
-```powershell
-ollama serve
-```
-
-In a second PowerShell window, confirm the model responds:
-
-```powershell
-ollama run qwen3:4b
-```
-
-Exit the interactive Ollama prompt when the model check is complete.
-
-### 6. Start the Local GPT-SoVITS Server
-
-Start GPT-SoVITS using your local GPT-SoVITS installation instructions. Configure it so the TTS endpoint matches Byulie's default config:
-
-```text
-http://127.0.0.1:9880/tts
-```
-
-Keep the GPT-SoVITS server running while Byulie is active.
-
-### 7. Run Byulie
-
-The easiest Windows launcher is the included batch file. Double-click it from File Explorer, or run it from PowerShell in the project root:
-
-```powershell
-.\start-byulie.bat
-```
-
-The launcher calls `scripts/start_byulie.ps1`, validates Windows 11 64-bit, creates `.venv` with 64-bit Python if needed, installs `requirements.txt`, checks whether Ollama for Windows is available, and then starts the voice chat. You can also run the Python entry point manually after activating the virtual environment:
+### Voice chat (CLI)
 
 ```powershell
 python server/main_chat.py
 ```
 
-Expected runtime flow:
+Press **Enter** to start recording, **Enter** again to stop. Byulie transcribes, replies, synthesizes speech, and updates memory.
 
-1. Byulie starts the chat loop.
-2. The microphone captures your speech.
-3. Faster-Whisper transcribes the recorded audio locally.
-4. Ollama generates a local response with `qwen3:4b`.
-5. GPT-SoVITS generates the voice response locally.
-6. Byulie plays the generated audio and updates local JSON memory.
-
-### 8. Launch the Local Web Interface (Optional)
-
-From the repository root on Windows, launch the web interface with:
-
-```powershell
-.\start-byulie.bat -Mode web
-```
-
-You can also run it manually with the virtual environment activated:
+### Web interface (optional)
 
 ```powershell
 python client/app.py
 ```
 
-Gradio prints a local browser URL such as:
+Open the URL Gradio prints (typically `http://127.0.0.1:7860`). The UI binds to localhost only.
 
-```text
-http://127.0.0.1:7860
-```
+Supports typed chat, microphone input, model/temperature controls, system prompt editing, and emotion/tone hints for TTS.
 
-Open that URL in your Windows browser. The interface binds to `127.0.0.1` only — no cloud hosting, analytics, or paid APIs.
-
-The web UI supports typed chat, microphone upload/recording with Faster-Whisper transcription, Byulie's text and voice responses via your local GPT-SoVITS server, an Ollama model selector, temperature and token limits, a system prompt editor, and emotion/tone controls for spoken style.
+---
 
 ## Troubleshooting
 
-### Windows 11 64-bit Validation Fails
+<details>
+<summary><strong>Microphone not detected</strong></summary>
 
-Symptoms:
+- Confirm input device: **Settings → System → Sound → Input**
+- Allow mic access: **Settings → Privacy & security → Microphone**
+- Close apps holding exclusive mic access; test with Windows Sound Recorder
+- Verify FFmpeg: `ffmpeg -version`
 
-- `start-byulie.bat` says Byulie is configured for Windows 11 64-bit.
-- The launcher says Python 3.10 or 3.11 64-bit was not found.
-- The launcher says the existing `.venv` is not using 64-bit Python.
+</details>
 
-Checks and fixes:
+<details>
+<summary><strong>Ollama not reachable</strong></summary>
 
-1. Run Byulie on Windows 11 64-bit, not WSL, Linux, macOS, or 32-bit Windows.
-2. Install 64-bit Python 3.10 or 3.11 from the official Windows installer and enable **Add Python to PATH**.
-3. If `.venv` was created with the wrong Python, delete it and rerun:
+- `ollama --version` · `ollama list` · `ollama pull qwen3:4b`
+- Start manually: `ollama serve`
+- Config must point to `http://127.0.0.1:11434` unless you changed the port
 
-```powershell
-Remove-Item -Recurse -Force .\.venv
-.\start-byulie.bat
-```
+</details>
 
-4. Advanced developers can set `BYULIE_SKIP_WINDOWS_CHECK=1` only when intentionally running checks outside the supported Windows target.
+<details>
+<summary><strong>GPT-SoVITS / no voice output</strong></summary>
 
-### Microphone Not Detected
+- Confirm the TTS server is running at `http://127.0.0.1:9880/tts` (or your configured endpoint)
+- Check `tts.ref_audio_path` exists and language fields match your model
+- Restart GPT-SoVITS after changing reference audio or ports
 
-Symptoms:
+</details>
 
-- Byulie starts but never records your voice.
-- Recording fails immediately.
-- Transcription is empty even though you spoke.
+<details>
+<summary><strong>Faster-Whisper download or cache errors</strong></summary>
 
-Checks and fixes:
-
-1. Open **Windows Settings → System → Sound → Input** and confirm the correct microphone is selected.
-2. Open **Windows Settings → Privacy & security → Microphone** and allow microphone access for desktop apps.
-3. Close other applications that may have exclusive microphone control.
-4. Test the microphone with Windows Sound Recorder or another local recording app.
-5. If you use a USB microphone, unplug it, plug it back in, and restart PowerShell.
-6. Confirm FFmpeg is on PATH with:
-
-```powershell
-ffmpeg -version
-```
-
-### Ollama Not Reachable
-
-Symptoms:
-
-- Requests to the LLM fail.
-- The app cannot connect to `127.0.0.1:11434`.
-- Model responses never arrive.
-
-Checks and fixes:
-
-1. Confirm Ollama is installed:
-
-```powershell
-ollama --version
-```
-
-2. Confirm the default model is installed:
-
-```powershell
-ollama list
-```
-
-3. Pull the model if it is missing:
-
-```powershell
-ollama pull qwen3:4b
-```
-
-4. Start Ollama manually if needed:
-
-```powershell
-ollama serve
-```
-
-5. Confirm `character_config.yaml` points to:
-
-```text
-http://127.0.0.1:11434
-```
-
-6. If another process uses port `11434`, stop that process or reconfigure Ollama and Byulie to use the same port.
-
-### GPT-SoVITS Endpoint Not Reachable
-
-Symptoms:
-
-- Text responses work, but no voice audio is generated.
-- The app reports a TTS connection error.
-- The configured `/tts` endpoint does not respond.
-
-Checks and fixes:
-
-1. Make sure the GPT-SoVITS local server is running.
-2. Confirm the server is listening on the same endpoint configured in `character_config.yaml`:
-
-```text
-http://127.0.0.1:9880/tts
-```
-
-3. Check whether GPT-SoVITS uses a different port in your local setup and update `tts.endpoint` if necessary.
-4. Verify `tts.ref_audio_path` points to an existing local reference audio file.
-5. Confirm `tts.text_lang` and `tts.prompt_lang` match the languages expected by your GPT-SoVITS model.
-6. Restart GPT-SoVITS after changing model, reference audio, or port settings.
-
-### Faster-Whisper Model Download or Cache Issues
-
-Symptoms:
-
-- First startup fails while loading the ASR model.
-- Download errors appear for the Faster-Whisper model.
-- Startup works on one network but not another.
-
-Checks and fixes:
-
-1. Confirm the virtual environment is activated.
-2. Confirm Python dependencies are installed:
-
-```powershell
-pip install -r requirements.txt
-```
-
-3. Check that your internet connection allows the initial model download.
-4. Free disk space for model cache files.
-5. Try a smaller ASR model in `character_config.yaml`, such as:
+- Ensure venv is active and dependencies are installed
+- Allow initial model download; free disk space if needed
+- Fallback in config:
 
 ```yaml
 asr:
@@ -371,64 +329,50 @@ asr:
   compute_type: "float32"
 ```
 
-6. If the cache is corrupted, remove the affected local model cache directory and let Faster-Whisper download it again.
+</details>
 
-### CUDA and VRAM Limitations
+<details>
+<summary><strong>CUDA / VRAM issues</strong></summary>
 
-Symptoms:
+- Keep ASR on CPU; stay on `qwen3:4b` until stable
+- Monitor VRAM: `nvidia-smi`
+- Close other GPU-heavy applications before running LLM + TTS together
 
-- GPU out-of-memory errors.
-- Ollama becomes slow or unloads models.
-- GPT-SoVITS fails when the LLM is already running.
-- Faster-Whisper fails with GPU/CUDA errors.
+</details>
 
-Checks and fixes:
+---
 
-1. Update to a current NVIDIA driver.
-2. Start with CPU ASR:
+## Learning goals
 
-```yaml
-asr:
-  device: "cpu"
-  compute_type: "float32"
-```
+This repository documents work I am doing as a **Computer Science student** to understand applied ML systems end to end:
 
-3. Keep the default LLM model at `qwen3:4b` until the full pipeline is stable.
-4. Close other GPU-heavy applications, including games, video editors, and browser tabs using hardware acceleration.
-5. Use Task Manager or `nvidia-smi` to check VRAM usage:
+- Wiring **ASR → LLM → TTS** into one coherent loop
+- Running inference **locally** and managing model/resource tradeoffs
+- Persisting **conversation state** without external databases (MVP)
+- Building a minimal **UI layer** (Gradio) on top of the same backend
+- Iterating on prompts, voice reference audio, and configuration-driven behavior
 
-```powershell
-nvidia-smi
-```
+Planned personal experiments include lower-latency mic input, richer memory, and tighter emotion control for synthesis.
 
-6. If CUDA libraries are mismatched, reinstall the NVIDIA driver and use dependency versions compatible with your installed CUDA runtime.
-7. Prefer smaller models when running LLM, ASR, and TTS simultaneously on limited VRAM.
+| Status | Item |
+| --- | --- |
+| Done | Gradio web UI |
+| Done | Emotion / tone controls in UI |
+| In progress | Voice chat loop refinement |
+| Planned | Live microphone mode |
+| Planned | SQLite memory store |
+| Planned | VRM frontend exploration |
 
-## Roadmap
+---
 
-Planned improvements:
+## Acknowledgments
 
-- **GUI:** desktop interface for chat, configuration, model status, and voice controls.
-- **Live microphone mode:** lower-latency continuous or voice-activated microphone input beyond the current recording loop.
-- **Emotion controls:** adjustable speaking style, tone, pacing, and emotional presets for GPT-SoVITS output.
-- **Memory upgrades:** richer long-term memory, summarization, search, and possible migration from JSON to SQLite or another local store.
-- **Model tuning:** better presets for low-VRAM, balanced, and high-quality local model configurations.
+Built with open tools I am learning from — not a fork or product release:
 
-## TODO / Future Improvements
+- [Ollama](https://ollama.com/) — local LLM runtime
+- [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper) — speech recognition
+- [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) — voice synthesis
 
-- [x] Local Gradio web interface
-- [ ] Live microphone input support
-- [x] Emotion or tone control in the web interface
-- [ ] VRM model frontend
-- [ ] SQLite memory store
-- [ ] Optional local model presets for low-VRAM and higher-quality modes
+---
 
-## Credits
-
-- Voice synthesis powered by [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS).
-- Speech recognition powered by [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper).
-- Local LLM runtime powered by [Ollama](https://ollama.com/).
-
-## License
-
-MIT — feel free to clone, modify, and build your own local Byulie assistant.
+<p align="center"><sub>Private personal project · Windows · local inference only</sub></p>

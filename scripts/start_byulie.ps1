@@ -4,8 +4,7 @@ param(
     [string]$Mode = "voice",
 
     [switch]$SkipInstall,
-    [switch]$SkipOllamaCheck,
-    [switch]$SkipWindowsCheck
+    [switch]$SkipOllamaCheck
 )
 
 Set-StrictMode -Version Latest
