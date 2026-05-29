@@ -1,0 +1,6 @@
+faster-whisper
+requests
+PyYAML
+sounddevice
+soundfile
+gradio

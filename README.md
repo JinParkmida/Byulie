@@ -124,7 +124,46 @@ Start your local GPT-SoVITS server so it matches the default endpoint:
 http://127.0.0.1:9880/tts
 ```
 
-Leave it running while Byulie is active.
+Keep the GPT-SoVITS server running while Byulie is active.
+
+### 7. Run Byulie
+
+The easiest Windows launcher is the included batch file. Double-click it from File Explorer, or run it from PowerShell in the project root:
+
+```powershell
+.\start-byulie.bat
+```
+
+The launcher calls `scripts/start_byulie.ps1`, creates `.venv` if needed, installs `requirements.txt`, checks whether Ollama is available, and then starts the voice chat. You can also run the Python entry point manually after activating the virtual environment:
+
+```powershell
+python server/main_chat.py
+```
+
+Expected runtime flow:
+
+1. Byulie starts the chat loop.
+2. The microphone captures your speech.
+3. Faster-Whisper transcribes the recorded audio locally.
+4. Ollama generates a local response with `qwen3:4b`.
+5. GPT-SoVITS generates the voice response locally.
+6. Byulie plays the generated audio and updates local JSON memory.
+
+### 8. Launch the Local Web Interface (Optional)
+
+From the repository root on Windows, launch the web interface with:
+
+```powershell
+.\start-byulie.bat -Mode web
+```
+
+You can also run it manually with the virtual environment activated:
+
+```powershell
+python client/app.py
+```
+
+Gradio prints a local browser URL such as:
 
 ---
 
