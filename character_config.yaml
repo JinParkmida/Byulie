@@ -1,3 +1,6 @@
+# Byulie runs local-only: Ollama + Faster-Whisper + local GPT-SoVITS.
+# Remote or paid API endpoints are rejected at startup and when saving config.
+
 character:
   name: Byulie
 

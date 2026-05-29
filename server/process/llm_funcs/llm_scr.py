@@ -9,10 +9,13 @@ from urllib.parse import urljoin
 import requests
 import yaml
 
+from server.local_only import assert_local_url, assert_ollama_provider, validate_config_urls
 from server.paths import CONFIG_PATH, REPO_ROOT
 
 with CONFIG_PATH.open("r", encoding="utf-8") as f:
     char_config = yaml.safe_load(f)
+
+validate_config_urls(char_config)
 
 # Constants
 _history_file = char_config["history_file"]
@@ -31,6 +34,35 @@ CONTEXT_TOKENS = LLM_CONFIG.get("context_tokens", 8192)
 TIMEOUT_SECONDS = LLM_CONFIG.get("timeout_seconds", 120)
 DEFAULT_SYSTEM_PROMPT = char_config["presets"]["default"]["system_prompt"]
 SYSTEM_MESSAGE = {"role": "system", "content": DEFAULT_SYSTEM_PROMPT}
+
+
+def reload_from_config():
+    """Reload module-level settings after character_config.yaml changes."""
+    global char_config, HISTORY_FILE, LLM_CONFIG, PROVIDER, MODEL
+    global OLLAMA_BASE_URL, TEMPERATURE, MAX_OUTPUT_TOKENS, CONTEXT_TOKENS
+    global TIMEOUT_SECONDS, DEFAULT_SYSTEM_PROMPT, SYSTEM_MESSAGE
+
+    with CONFIG_PATH.open("r", encoding="utf-8") as f:
+        char_config = yaml.safe_load(f)
+
+    validate_config_urls(char_config)
+
+    _history_file = char_config["history_file"]
+    HISTORY_FILE = (
+        str(REPO_ROOT / _history_file)
+        if not Path(_history_file).is_absolute()
+        else _history_file
+    )
+    LLM_CONFIG = char_config.get("llm", {})
+    PROVIDER = LLM_CONFIG.get("provider", "ollama")
+    MODEL = LLM_CONFIG.get("model", "qwen3:4b")
+    OLLAMA_BASE_URL = LLM_CONFIG.get("base_url", "http://127.0.0.1:11434").rstrip("/")
+    TEMPERATURE = LLM_CONFIG.get("temperature", 0.8)
+    MAX_OUTPUT_TOKENS = LLM_CONFIG.get("max_output_tokens", 512)
+    CONTEXT_TOKENS = LLM_CONFIG.get("context_tokens", 8192)
+    TIMEOUT_SECONDS = LLM_CONFIG.get("timeout_seconds", 120)
+    DEFAULT_SYSTEM_PROMPT = char_config["presets"]["default"]["system_prompt"]
+    SYSTEM_MESSAGE = {"role": "system", "content": DEFAULT_SYSTEM_PROMPT}
 
 
 def build_system_message(system_prompt=None):
@@ -103,11 +135,11 @@ def get_byulie_response_no_tool(
     max_output_tokens=None,
 ):
     """Call the local Ollama server and return Byulie's text response."""
-    if PROVIDER != "ollama":
-        raise RuntimeError("Only the free local Ollama provider is supported in the MVP.")
+    assert_ollama_provider(PROVIDER)
 
     selected_model = model or MODEL
-    endpoint = urljoin(f"{OLLAMA_BASE_URL}/", "api/chat")
+    base_url = assert_local_url(OLLAMA_BASE_URL, "llm.base_url")
+    endpoint = urljoin(f"{base_url}/", "api/chat")
     payload = {
         "model": selected_model,
         "messages": messages,

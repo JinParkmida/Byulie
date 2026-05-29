@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 import sys
 import uuid
@@ -29,18 +30,25 @@ def get_wav_duration(path):
         return len(f) / f.samplerate
 
 
-print("\n========== Starting Byulie voice chat ==========\n")
+mode_label = "live microphone" if args.live else "push-to-talk (Enter)"
+print(f"\n========== Starting Byulie voice chat ({mode_label}) ==========\n")
+
 whisper_model = WhisperModel(
     asr_config.get("model", "base.en"),
     device=asr_config.get("device", "cpu"),
     compute_type=asr_config.get("compute_type", "float32"),
 )
 
+record_fn = record_live_and_transcribe if args.live else record_and_transcribe
+
 while True:
     conversation_recording = AUDIO_DIR / "conversation.wav"
     conversation_recording.parent.mkdir(parents=True, exist_ok=True)
 
-    user_spoken_text = record_and_transcribe(whisper_model, conversation_recording)
+    user_spoken_text = record_fn(whisper_model, conversation_recording)
+    if not user_spoken_text.strip():
+        print("Skipping empty input.\n")
+        continue
 
     llm_output = llm_response(user_spoken_text)
 

@@ -1,0 +1,6 @@
+faster-whisper
+sounddevice
+requests
+uvicorn[standard]
+python-multipart
+pyyaml

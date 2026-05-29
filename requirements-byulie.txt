@@ -1,0 +1,14 @@
+# Minimal dependencies for Byulie (local-only runtime).
+# Does not include GPT-SoVITS — run that as a separate local server.
+
+fastapi>=0.115.2
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+pydantic>=2.0,<2.11
+PyYAML>=6.0
+requests>=2.31.0
+faster-whisper>=1.0.0
+sounddevice>=0.4.6
+soundfile>=0.12.1
+numpy<2.0
+gradio>=5.0.0

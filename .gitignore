@@ -1,0 +1,12 @@
+.venv/
+.byulie/
+__pycache__/
+*.py[cod]
+*.wav
+audio/
+byulie_chat_history.json
+chat_history.json
+node_modules/
+client/web/dist/
+.env
+*.log
