@@ -189,7 +189,13 @@ Keep the GPT-SoVITS server running while Byulie is active.
 
 ### 7. Run Byulie
 
-From the project root, with the virtual environment activated:
+The easiest Windows launcher is the included batch file. Double-click it from File Explorer, or run it from PowerShell in the project root:
+
+```powershell
+.\start-byulie.bat
+```
+
+The launcher calls `scripts/start_byulie.ps1`, creates `.venv` if needed, installs `requirements.txt`, checks whether Ollama is available, and then starts the voice chat. You can also run the Python entry point manually after activating the virtual environment:
 
 ```powershell
 python server/main_chat.py
@@ -206,7 +212,13 @@ Expected runtime flow:
 
 ### 8. Launch the Local Web Interface (Optional)
 
-From the repository root on Windows, with the virtual environment activated:
+From the repository root on Windows, launch the web interface with:
+
+```powershell
+.\start-byulie.bat -Mode web
+```
+
+You can also run it manually with the virtual environment activated:
 
 ```powershell
 python client/app.py
