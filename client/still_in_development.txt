@@ -1,1 +1,1 @@
-Byulie client extensions and additional UI modules may be added here.
+Byulie client extensions and additional UI modules should target Windows 11 64-bit.
