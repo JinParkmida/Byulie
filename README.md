@@ -1,10 +1,10 @@
 # Byulie
 
-Local voice AI assistant for Windows — [github.com/JinParkmida/Byulie](https://github.com/JinParkmida/Byulie).
+Local voice AI assistant for **Windows 11 64-bit** — [github.com/JinParkmida/Byulie](https://github.com/JinParkmida/Byulie).
 
 Byulie is an anime-focused local AI assistant project. She listens, remembers your conversations, responds with a local Ollama language model, and speaks through a local GPT-SoVITS voice server.
 
-> **MVP privacy/cost rule:** Byulie's default MVP uses **no paid APIs** and **no hosted AI services**. Ollama, Faster-Whisper, GPT-SoVITS, and the JSON memory file all run locally on your Windows machine.
+> **MVP privacy/cost rule:** Byulie's default MVP uses **no paid APIs** and **no hosted AI services**. Ollama, Faster-Whisper, GPT-SoVITS, and the JSON memory file all run locally on your Windows 11 64-bit machine.
 
 ## What Byulie Does
 
@@ -27,14 +27,15 @@ Byulie is designed to behave like a voice-enabled desktop companion:
 | Memory | Local JSON file | Default conversation history stored in `byulie_chat_history.json` |
 | Configuration | `character_config.yaml` | Controls LLM, ASR, TTS, prompt, and memory settings |
 
-## Windows Prerequisites
+## Windows 11 64-bit Prerequisites
 
-Install these before running Byulie:
+Byulie is intentionally targeted at Windows 11 64-bit. Install these before running Byulie:
 
 - **Windows 11 64-bit**.
-- **Python 3.10 or Python 3.11**.
+- **64-bit Python 3.10 or Python 3.11 for Windows**.
   - During installation, enable **Add Python to PATH**.
   - Verify with `python --version` in PowerShell.
+  - The launcher rejects 32-bit Python because the audio and local AI dependencies are intended for 64-bit Windows.
 - **Git for Windows**.
   - Verify with `git --version`.
 - **FFmpeg on PATH**.
@@ -114,7 +115,7 @@ Important defaults:
 
 ## Step-by-Step Windows Setup
 
-Run these commands from **PowerShell** unless noted otherwise.
+Run these commands from **PowerShell on Windows 11 64-bit** unless noted otherwise. The recommended launcher validates Windows 11 64-bit and 64-bit Python before starting Byulie.
 
 ### 1. Clone the Repository
 
@@ -189,7 +190,13 @@ Keep the GPT-SoVITS server running while Byulie is active.
 
 ### 7. Run Byulie
 
-From the project root, with the virtual environment activated:
+The easiest Windows launcher is the included batch file. Double-click it from File Explorer, or run it from PowerShell in the project root:
+
+```powershell
+.\start-byulie.bat
+```
+
+The launcher calls `scripts/start_byulie.ps1`, validates Windows 11 64-bit, creates `.venv` with 64-bit Python if needed, installs `requirements.txt`, checks whether Ollama for Windows is available, and then starts the voice chat. You can also run the Python entry point manually after activating the virtual environment:
 
 ```powershell
 python server/main_chat.py
@@ -206,7 +213,13 @@ Expected runtime flow:
 
 ### 8. Launch the Local Web Interface (Optional)
 
-From the repository root on Windows, with the virtual environment activated:
+From the repository root on Windows, launch the web interface with:
+
+```powershell
+.\start-byulie.bat -Mode web
+```
+
+You can also run it manually with the virtual environment activated:
 
 ```powershell
 python client/app.py
@@ -218,11 +231,76 @@ Gradio prints a local browser URL such as:
 http://127.0.0.1:7860
 ```
 
-Open that URL in your browser. The interface binds to `127.0.0.1` only — no cloud hosting, analytics, or paid APIs.
+Open that URL in your Windows browser. The interface binds to `127.0.0.1` only — no cloud hosting, analytics, or paid APIs.
 
 The web UI supports typed chat, microphone upload/recording with Faster-Whisper transcription, Byulie's text and voice responses via your local GPT-SoVITS server, an Ollama model selector, temperature and token limits, a system prompt editor, and emotion/tone controls for spoken style.
 
 ## Troubleshooting
+
+### Git Says the Branch Is Invalid or README Is Unmerged
+
+Symptoms:
+
+- GitHub says the pull request branch is invalid, deleted, or cannot be compared.
+- `git status` says `Your branch is based on 'origin/main', but the upstream is gone.`
+- `git status` shows `Unmerged paths` with `both modified: README.md`.
+- Many files are listed under `Changes to be committed`, but the pull request cannot be created yet.
+
+Checks and fixes:
+
+1. Stay in the Byulie repository and clear the deleted upstream pointer:
+
+```powershell
+git branch --unset-upstream
+```
+
+2. Resolve the README merge conflict before pushing. Open `README.md`, remove conflict markers such as `<<<<<<<`, `=======`, and `>>>>>>>`, keep the final text you want, then stage it:
+
+```powershell
+git add README.md
+```
+
+3. Commit the staged launcher, web UI, server, and README changes:
+
+```powershell
+git commit -m "Update Byulie Windows 11 launcher"
+```
+
+4. If you want the changes directly on `main`, push `main` after the conflict is committed:
+
+```powershell
+git push -u origin main
+```
+
+5. If GitHub still will not create a pull request from `main`, create and push a separate branch. Pull requests must compare two different branches, so do not open a PR from `main` into `main`:
+
+```powershell
+git checkout -b windows-11-launcher
+git push -u origin windows-11-launcher
+```
+
+Then create the pull request from `windows-11-launcher` into `main`.
+
+### Windows 11 64-bit Validation Fails
+
+Symptoms:
+
+- `start-byulie.bat` says Byulie is configured for Windows 11 64-bit.
+- The launcher says Python 3.10 or 3.11 64-bit was not found.
+- The launcher says the existing `.venv` is not using 64-bit Python.
+
+Checks and fixes:
+
+1. Run Byulie on Windows 11 64-bit, not WSL, Linux, macOS, or 32-bit Windows.
+2. Install 64-bit Python 3.10 or 3.11 from the official Windows installer and enable **Add Python to PATH**.
+3. If `.venv` was created with the wrong Python, delete it and rerun:
+
+```powershell
+Remove-Item -Recurse -Force .\.venv
+.\start-byulie.bat
+```
+
+4. Advanced developers can set `BYULIE_SKIP_WINDOWS_CHECK=1` only when intentionally running checks outside the supported Windows target.
 
 ### Microphone Not Detected
 

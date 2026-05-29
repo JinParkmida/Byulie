@@ -1,188 +1,234 @@
-# Byulie one-click launcher — starts API + web app and opens your browser.
+[CmdletBinding()]
 param(
-    [switch]$SetupOnly,
-    [switch]$SkipBrowser
+    [ValidateSet("voice", "web")]
+    [string]$Mode = "voice",
+
+    [switch]$SkipInstall,
+    [switch]$SkipOllamaCheck,
+    [switch]$SkipWindowsCheck
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-$Root = Split-Path -Parent $PSScriptRoot
-$PidDir = Join-Path $Root ".byulie"
-$Python = Join-Path $Root ".venv\Scripts\python.exe"
-$Pip = Join-Path $Root ".venv\Scripts\pip.exe"
-$WebDir = Join-Path $Root "client\web"
-$ApiUrl = "http://127.0.0.1:8000/api/health"
-$AppUrl = "http://127.0.0.1:5173"
 
-Set-Location $Root
-New-Item -ItemType Directory -Force -Path $PidDir | Out-Null
-
-function Write-Step($text) {
-    Write-Host ""
-    Write-Host "  $text" -ForegroundColor Cyan
+function Write-Info {
+    param([Parameter(Mandatory = $true)][string]$Message)
+    Write-Host "[Byulie] $Message" -ForegroundColor Cyan
 }
 
-function Write-Ok($text) {
-    Write-Host "  [ok] $text" -ForegroundColor Green
+function Write-Warn {
+    param([Parameter(Mandatory = $true)][string]$Message)
+    Write-Host "[Byulie] WARNING: $Message" -ForegroundColor Yellow
 }
 
-function Write-Warn($text) {
-    Write-Host "  [!] $text" -ForegroundColor Yellow
+function Test-CommandExists {
+    param([Parameter(Mandatory = $true)][string]$Name)
+    return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
-function Write-Fail($text) {
-    Write-Host "  [x] $text" -ForegroundColor Red
+function Assert-Windows11X64 {
+    if ($SkipWindowsCheck) {
+        Write-Info "Skipping Windows 11 64-bit validation because -SkipWindowsCheck was provided."
+        return
+    }
+
+    if ($PSVersionTable.PSEdition -eq "Core" -and -not $IsWindows) {
+        throw "Byulie's launcher is made for Windows 11 64-bit. Run start-byulie.bat from Windows 11, not this operating system."
+    }
+
+    $os = Get-CimInstance -ClassName Win32_OperatingSystem
+    $caption = [string]$os.Caption
+    $architecture = [string]$os.OSArchitecture
+    if ($caption -notlike "*Windows 11*" -or $architecture -notlike "*64*") {
+        throw "Byulie is configured for Windows 11 64-bit. Detected '$caption' ($architecture)."
+    }
+
+    Write-Info "Validated target OS: $caption ($architecture)."
 }
 
-function Test-CommandAvailable($name) {
-    return [bool](Get-Command $name -ErrorAction SilentlyContinue)
+function Get-RepositoryRoot {
+    $scriptPath = $PSCommandPath
+    if (-not $scriptPath) {
+        $scriptPath = $MyInvocation.MyCommand.Path
+    }
+
+    return (Resolve-Path (Join-Path (Split-Path -Parent $scriptPath) "..")).Path
 }
 
-function Wait-ForUrl($url, $label, $seconds = 60) {
-    for ($i = 0; $i -lt $seconds; $i++) {
-        try {
-            $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2
-            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
-                Write-Ok "$label is ready"
-                return $true
-            }
-        } catch {
-            Start-Sleep -Seconds 1
+function Test-PythonCandidate {
+    param(
+        [Parameter(Mandatory = $true)][string]$Command,
+        [string[]]$PrefixArguments = @()
+    )
+
+    $checkCode = @'
+import platform
+import sys
+major, minor = sys.version_info[:2]
+is_supported_version = (major == 3 and minor in (10, 11))
+is_64bit = platform.architecture()[0] == "64bit"
+print(f"{major}.{minor};{platform.architecture()[0]}")
+sys.exit(0 if is_supported_version and is_64bit else 1)
+'@
+
+    $output = & $Command @PrefixArguments -c $checkCode 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return $null
+    }
+
+    return [PSCustomObject]@{
+        Command = $Command
+        PrefixArguments = $PrefixArguments
+        Version = $output
+    }
+}
+
+function Get-WindowsPython {
+    $candidates = @()
+
+    if (Test-CommandExists "py") {
+        $candidates += [PSCustomObject]@{ Command = "py"; PrefixArguments = @("-3.11-64") }
+        $candidates += [PSCustomObject]@{ Command = "py"; PrefixArguments = @("-3.10-64") }
+        $candidates += [PSCustomObject]@{ Command = "py"; PrefixArguments = @("-3-64") }
+    }
+
+    if (Test-CommandExists "python") {
+        $candidates += [PSCustomObject]@{ Command = "python"; PrefixArguments = @() }
+    }
+
+    foreach ($candidate in $candidates) {
+        $validated = Test-PythonCandidate -Command $candidate.Command -PrefixArguments $candidate.PrefixArguments
+        if ($validated) {
+            Write-Info "Using Python $($validated.Version) via '$($candidate.Command) $($candidate.PrefixArguments -join ' ')'."
+            return $validated
         }
     }
-    Write-Warn "$label did not respond in time ($url)"
-    return $false
+
+    throw "Python 3.10 or 3.11 64-bit was not found. Install 64-bit Python for Windows and enable 'Add Python to PATH'."
 }
 
-function Stop-Port($port) {
-    $connections = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-    foreach ($conn in $connections) {
-        Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
+function Invoke-Python {
+    param(
+        [Parameter(Mandatory = $true)]$Python,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+
+    $command = $Python.Command
+    $prefixArguments = @($Python.PrefixArguments)
+    & $command @prefixArguments @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python command failed: $command $($prefixArguments -join ' ') $($Arguments -join ' ')"
     }
 }
 
-Clear-Host
-Write-Host ""
-Write-Host "  Byulie — local launcher" -ForegroundColor Magenta
-Write-Host "  =======================" -ForegroundColor DarkGray
-Write-Host ""
-
-if (-not (Test-CommandAvailable "python")) {
-    Write-Fail "Python not found. Install Python 3.10+ and enable Add to PATH."
-    Read-Host "Press Enter to exit"
-    exit 1
+function Get-VenvPythonPath {
+    param([Parameter(Mandatory = $true)][string]$RepoRoot)
+    return Join-Path $RepoRoot ".venv\Scripts\python.exe"
 }
 
-if (-not (Test-CommandAvailable "node") -or -not (Test-CommandAvailable "npm")) {
-    Write-Fail "Node.js not found. Install Node 20+ for the web app."
-    Read-Host "Press Enter to exit"
-    exit 1
+function Assert-VenvPythonX64 {
+    param([Parameter(Mandatory = $true)][string]$VenvPython)
+
+    $checkCode = 'import platform, sys; sys.exit(0 if platform.architecture()[0] == "64bit" else 1)'
+    & $VenvPython -c $checkCode
+    if ($LASTEXITCODE -ne 0) {
+        throw "The virtual environment is not using 64-bit Python. Delete .venv and rerun start-byulie.bat with 64-bit Python installed."
+    }
 }
 
-# --- First-time / missing deps ---
-if (-not (Test-Path $Python)) {
-    Write-Step "Creating Python virtual environment (first run)..."
-    python -m venv (Join-Path $Root ".venv")
+function Ensure-VirtualEnvironment {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoRoot,
+        [Parameter(Mandatory = $true)]$Python
+    )
+
+    $venvPython = Get-VenvPythonPath -RepoRoot $RepoRoot
+    if (Test-Path $venvPython) {
+        Assert-VenvPythonX64 -VenvPython $venvPython
+        Write-Info "Using existing Windows virtual environment at .venv."
+        return $venvPython
+    }
+
+    Write-Info "Creating Windows virtual environment at .venv."
+    Invoke-Python -Python $Python -Arguments @("-m", "venv", ".venv")
+    Assert-VenvPythonX64 -VenvPython $venvPython
+    return $venvPython
 }
 
-if (-not (Test-Path $Pip)) {
-    Write-Fail "Virtual environment setup failed."
-    Read-Host "Press Enter to exit"
-    exit 1
+function Install-Requirements {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoRoot,
+        [Parameter(Mandatory = $true)][string]$VenvPython
+    )
+
+    if ($SkipInstall) {
+        Write-Info "Skipping dependency installation because -SkipInstall was provided."
+        return
+    }
+
+    $requirements = Join-Path $RepoRoot "requirements.txt"
+    if (-not (Test-Path $requirements)) {
+        throw "requirements.txt was not found. This Windows launcher expects dependencies to be listed there."
+    }
+
+    Write-Info "Upgrading pip in the Windows virtual environment."
+    & $VenvPython -m pip install --upgrade pip
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to upgrade pip."
+    }
+
+    Write-Info "Installing Windows Python dependencies from requirements.txt."
+    & $VenvPython -m pip install -r $requirements
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to install requirements.txt."
+    }
 }
 
-Write-Step "Checking Python packages..."
-$depsMarker = Join-Path $Root ".venv\.deps_ok"
-& $Pip install -q --upgrade pip 2>$null
-if (-not (Test-Path $depsMarker)) {
-    Write-Warn "First-time Python setup (may take a few minutes)..."
-    & $Pip install -r (Join-Path $Root "requirements-byulie.txt")
-    New-Item -ItemType File -Path $depsMarker -Force | Out-Null
-} else {
-    & $Pip install -q -r (Join-Path $Root "requirements-byulie.txt")
-}
-Write-Ok "Python dependencies ready"
+function Test-OllamaModel {
+    if ($SkipOllamaCheck) {
+        Write-Info "Skipping Ollama check because -SkipOllamaCheck was provided."
+        return
+    }
 
-Write-Step "Checking web dependencies..."
-Set-Location $WebDir
-if (-not (Test-Path "node_modules")) {
-    Write-Warn "Installing npm packages (first run may take a minute)..."
-    npm install --silent
-}
-Write-Ok "Web dependencies ready"
-Set-Location $Root
+    if (-not (Test-CommandExists "ollama")) {
+        Write-Warn "Ollama for Windows is not on PATH. Install Ollama for Windows before chatting with Byulie."
+        return
+    }
 
-if ($SetupOnly) {
-    Write-Ok "Setup complete. Run Start-Byulie.bat to launch."
-    Read-Host "Press Enter to exit"
-    exit 0
+    Write-Info "Checking Ollama for Windows installation."
+    & ollama --version
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "Ollama did not respond to --version. Start Ollama manually if Byulie cannot connect."
+    }
 }
 
-# --- Stop anything already on our ports ---
-Write-Step "Preparing ports..."
-Stop-Port 8000
-Stop-Port 5173
-Start-Sleep -Seconds 1
+function Start-Byulie {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoRoot,
+        [Parameter(Mandatory = $true)][string]$VenvPython,
+        [Parameter(Mandatory = $true)][string]$LaunchMode
+    )
 
-# --- Start API ---
-Write-Step "Starting Byulie API (port 8000)..."
-$apiLog = Join-Path $PidDir "api.log"
-$apiArgs = @(
-    "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
-    "Set-Location '$Root'; & '$Python' -m uvicorn server.api.main:app --reload --host 127.0.0.1 --port 8000 2>&1 | Tee-Object -FilePath '$apiLog'"
-)
-$apiProc = Start-Process powershell -ArgumentList $apiArgs -WindowStyle Minimized -PassThru
-$apiProc.Id | Out-File (Join-Path $PidDir "api.pid") -Encoding ascii
-
-# --- Start Vite ---
-Write-Step "Starting Byulie web app (port 5173)..."
-$webLog = Join-Path $PidDir "web.log"
-$webArgs = @(
-    "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
-    "Set-Location '$WebDir'; npm run dev 2>&1 | Tee-Object -FilePath '$webLog'"
-)
-$webProc = Start-Process powershell -ArgumentList $webArgs -WindowStyle Minimized -PassThru
-$webProc.Id | Out-File (Join-Path $PidDir "web.pid") -Encoding ascii
-
-# --- Wait & open browser ---
-Write-Step "Waiting for services..."
-Wait-ForUrl $ApiUrl "API" | Out-Null
-$webReady = Wait-ForUrl $AppUrl "Web app"
-
-if (-not $SkipBrowser) {
-    if ($webReady) {
-        Start-Process $AppUrl
-        Write-Ok "Opened $AppUrl in your browser"
+    if ($LaunchMode -eq "web") {
+        Write-Info "Launching Byulie web UI at http://127.0.0.1:7860."
+        & $VenvPython (Join-Path $RepoRoot "client\app.py")
     } else {
-        $indexPath = Join-Path $Root "index.html"
-        if (Test-Path $indexPath) {
-            Start-Process $indexPath
-            Write-Warn "Web app still starting — landing page opened. It will redirect when ready."
-        }
+        Write-Info "Launching Byulie voice chat."
+        & $VenvPython (Join-Path $RepoRoot "server\main_chat.py")
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Byulie exited with code $LASTEXITCODE."
     }
 }
 
-Write-Host ""
-Write-Host "  Byulie is running." -ForegroundColor Green
-Write-Host "  App:    $AppUrl" -ForegroundColor DarkGray
-Write-Host "  API:    http://127.0.0.1:8000" -ForegroundColor DarkGray
-Write-Host "  Logs:   .byulie\api.log · .byulie\web.log" -ForegroundColor DarkGray
-Write-Host ""
-Write-Host "  Keep Ollama and GPT-SoVITS running separately." -ForegroundColor DarkGray
-Write-Host "  To stop Byulie: close this window and run Stop-Byulie.bat" -ForegroundColor DarkGray
-Write-Host "  (or press Enter below)" -ForegroundColor DarkGray
-Write-Host ""
+Assert-Windows11X64
+$repoRoot = Get-RepositoryRoot
+Set-Location $repoRoot
 
-Read-Host "Press Enter to stop Byulie"
-
-Write-Step "Stopping Byulie..."
-foreach ($name in @("api.pid", "web.pid")) {
-    $pidFile = Join-Path $PidDir $name
-    if (Test-Path $pidFile) {
-        $procId = Get-Content $pidFile -ErrorAction SilentlyContinue
-        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
-        Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
-    }
-}
-Stop-Port 8000
-Stop-Port 5173
-Write-Ok "Stopped"
+Write-Info "Repository root: $repoRoot"
+$python = Get-WindowsPython
+$venvPython = Ensure-VirtualEnvironment -RepoRoot $repoRoot -Python $python
+Install-Requirements -RepoRoot $repoRoot -VenvPython $venvPython
+Test-OllamaModel
+Start-Byulie -RepoRoot $repoRoot -VenvPython $venvPython -LaunchMode $Mode

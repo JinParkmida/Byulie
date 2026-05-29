@@ -1,4 +1,1 @@
-Legacy Gradio UI: client/app.py
-
-Primary web app: client/web (React + Vite)
-Start with: scripts/dev.ps1 or see README.
+Byulie client extensions and additional UI modules should target Windows 11 64-bit.
