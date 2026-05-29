@@ -3,7 +3,8 @@ character:
 
 history_file: byulie_chat_history.json
 
-llm:  provider: ollama
+llm:
+  provider: ollama
   base_url: "http://127.0.0.1:11434"
   model: "qwen3:4b"
   temperature: 0.8

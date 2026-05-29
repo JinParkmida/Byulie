@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from server.windows_environment import ensure_windows_11_64bit
 from server.process.asr_func.asr_push_to_talk import transcribe_audio_file
 from server.process.llm_funcs.llm_scr import llm_response
 from server.process.tts_func.sovits_ping import sovits_gen
@@ -18,7 +19,9 @@ from server.process.tts_func.sovits_ping import sovits_gen
 CONFIG_PATH = REPO_ROOT / "character_config.yaml"
 AUDIO_DIR = REPO_ROOT / "audio" / "web_ui"
 
-with CONFIG_PATH.open("r") as f:
+ensure_windows_11_64bit()
+
+with CONFIG_PATH.open("r", encoding="utf-8") as f:
     CHAR_CONFIG = yaml.safe_load(f)
 
 LLM_CONFIG = CHAR_CONFIG.get("llm", {})
