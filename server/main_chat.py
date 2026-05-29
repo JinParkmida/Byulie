@@ -11,9 +11,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from server.paths import AUDIO_DIR, CONFIG_PATH
+from server.windows_environment import ensure_windows_11_64bit
 from server.process.asr_func.asr_push_to_talk import record_and_transcribe
 from server.process.llm_funcs.llm_scr import llm_response
 from server.process.tts_func.sovits_ping import sovits_gen, play_audio
+
+ensure_windows_11_64bit()
 
 with CONFIG_PATH.open("r", encoding="utf-8") as f:
     char_config = yaml.safe_load(f)
