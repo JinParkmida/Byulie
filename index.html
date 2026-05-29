@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Byulie</title>
+    <style>
+      :root {
+        --bg: #0c0a10;
+        --text: #f4f0ff;
+        --muted: #a89bc4;
+        --accent: #e8a4c8;
+        --accent-2: #c77dba;
+        --card: rgba(22, 18, 32, 0.85);
+        --border: rgba(255, 255, 255, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        color: var(--text);
+        display: grid;
+        place-items: center;
+        padding: 2rem;
+        background:
+          radial-gradient(ellipse 80% 60% at 10% -10%, rgba(199, 125, 186, 0.22), transparent 55%),
+          radial-gradient(ellipse 70% 50% at 90% 0%, rgba(125, 164, 222, 0.12), transparent 50%),
+          var(--bg);
+      }
+
+      .card {
+        width: min(480px, 100%);
+        padding: 2.5rem 2rem;
+        border-radius: 20px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        text-align: center;
+        backdrop-filter: blur(16px);
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      }
+
+      .mark {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 1.25rem;
+        border-radius: 16px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        font-size: 1.4rem;
+        color: #1a1020;
+        box-shadow: 0 8px 32px rgba(232, 164, 200, 0.3);
+      }
+
+      h1 {
+        margin: 0 0 0.5rem;
+        font-size: 1.75rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+
+      p {
+        margin: 0 0 1.5rem;
+        color: var(--muted);
+        line-height: 1.55;
+        font-size: 0.95rem;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        font-size: 0.85rem;
+        color: var(--muted);
+        margin-bottom: 1.5rem;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #f0c987;
+        animation: pulse 1.4s infinite;
+      }
+
+      .dot.ready {
+        background: #7ddea8;
+        animation: none;
+        box-shadow: 0 0 10px rgba(125, 222, 168, 0.5);
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 0.4;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+
+      .actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+      }
+
+      a,
+      button {
+        display: block;
+        padding: 0.85rem 1.25rem;
+        border-radius: 12px;
+        font: inherit;
+        font-weight: 500;
+        text-decoration: none;
+        cursor: pointer;
+        border: none;
+        transition: transform 0.12s, opacity 0.15s;
+      }
+
+      .primary {
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #1a1020;
+      }
+
+      .primary:hover {
+        transform: translateY(-1px);
+      }
+
+      .primary:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .ghost {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        color: var(--text);
+      }
+
+      .hint {
+        margin-top: 1.5rem;
+        font-size: 0.78rem;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      code {
+        font-size: 0.85em;
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="mark">B</div>
+      <h1>Byulie</h1>
+      <p id="message">Checking if Byulie is already running…</p>
+
+      <div class="status">
+        <span class="dot" id="dot"></span>
+        <span id="status-text">Connecting</span>
+      </div>
+
+      <div class="actions">
+        <a class="primary" id="open-app" href="http://127.0.0.1:5173" hidden>Open Byulie</a>
+        <button class="ghost" id="retry" type="button" hidden>Check again</button>
+      </div>
+
+      <p class="hint">
+        First time? Double-click <code>Start-Byulie.bat</code> in the project folder.<br />
+        That starts everything and opens the app automatically.
+      </p>
+    </main>
+
+    <script>
+      const APP_URL = "http://127.0.0.1:5173";
+      const HEALTH_URL = "http://127.0.0.1:8000/api/health";
+
+      const message = document.getElementById("message");
+      const statusText = document.getElementById("status-text");
+      const dot = document.getElementById("dot");
+      const openApp = document.getElementById("open-app");
+      const retry = document.getElementById("retry");
+
+      async function check() {
+        dot.classList.remove("ready");
+        statusText.textContent = "Connecting";
+        openApp.hidden = true;
+        retry.hidden = true;
+
+        try {
+          const health = await fetch(HEALTH_URL, { signal: AbortSignal.timeout(2000) });
+          if (!health.ok) throw new Error("API not ready");
+
+          message.textContent = "Byulie is running. Opening the app…";
+          statusText.textContent = "Ready";
+          dot.classList.add("ready");
+          openApp.hidden = false;
+          window.location.replace(APP_URL);
+          return true;
+        } catch {
+          message.textContent =
+            "Byulie is not running yet. Double-click Start-Byulie.bat to launch everything.";
+          statusText.textContent = "Offline";
+          retry.hidden = false;
+          return false;
+        }
+      }
+
+      retry.addEventListener("click", () => check());
+      check();
+      setInterval(() => check(), 4000);
+    </script>
+  </body>
+</html>

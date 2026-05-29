@@ -4,6 +4,7 @@ from pathlib import Path
 import requests
 import yaml
 
+from server.local_only import assert_local_url
 from server.paths import CONFIG_PATH, REPO_ROOT
 
 with CONFIG_PATH.open("r", encoding="utf-8") as f:
@@ -32,7 +33,7 @@ def play_audio(path):
 
 
 def sovits_gen(in_text, output_wav_pth="output.wav"):
-    url = tts_config.get("endpoint", "http://127.0.0.1:9880/tts")
+    url = assert_local_url(tts_config.get("endpoint", "http://127.0.0.1:9880/tts"), "tts.endpoint")
 
     payload = {
         "text": in_text,

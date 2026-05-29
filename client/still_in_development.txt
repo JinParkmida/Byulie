@@ -1,1 +1,4 @@
-Byulie client extensions and additional UI modules may be added here.
+Legacy Gradio UI: client/app.py
+
+Primary web app: client/web (React + Vite)
+Start with: scripts/dev.ps1 or see README.

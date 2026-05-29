@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 import sys
 import uuid
@@ -11,9 +12,17 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from server.paths import AUDIO_DIR, CONFIG_PATH
-from server.process.asr_func.asr_push_to_talk import record_and_transcribe
+from server.process.asr_func.asr_push_to_talk import record_and_transcribe, record_live_and_transcribe
 from server.process.llm_funcs.llm_scr import llm_response
 from server.process.tts_func.sovits_ping import sovits_gen, play_audio
+
+parser = argparse.ArgumentParser(description="Byulie voice chat (local only)")
+parser.add_argument(
+    "--live",
+    action="store_true",
+    help="Live microphone: auto-detect when you stop speaking (no Enter key)",
+)
+args = parser.parse_args()
 
 with CONFIG_PATH.open("r", encoding="utf-8") as f:
     char_config = yaml.safe_load(f)
@@ -26,18 +35,25 @@ def get_wav_duration(path):
         return len(f) / f.samplerate
 
 
-print("\n========== Starting Byulie voice chat ==========\n")
+mode_label = "live microphone" if args.live else "push-to-talk (Enter)"
+print(f"\n========== Starting Byulie voice chat ({mode_label}) ==========\n")
+
 whisper_model = WhisperModel(
     asr_config.get("model", "base.en"),
     device=asr_config.get("device", "cpu"),
     compute_type=asr_config.get("compute_type", "float32"),
 )
 
+record_fn = record_live_and_transcribe if args.live else record_and_transcribe
+
 while True:
     conversation_recording = AUDIO_DIR / "conversation.wav"
     conversation_recording.parent.mkdir(parents=True, exist_ok=True)
 
-    user_spoken_text = record_and_transcribe(whisper_model, conversation_recording)
+    user_spoken_text = record_fn(whisper_model, conversation_recording)
+    if not user_spoken_text.strip():
+        print("Skipping empty input.\n")
+        continue
 
     llm_output = llm_response(user_spoken_text)
 

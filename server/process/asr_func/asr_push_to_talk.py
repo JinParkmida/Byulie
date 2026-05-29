@@ -7,6 +7,26 @@ def transcribe_audio_file(model, audio_file):
     return transcription.strip()
 
 
+def record_live_and_transcribe(model, output_file="recording.wav", samplerate=16000):
+    """Live mic: record until silence, then transcribe (local only)."""
+    from pathlib import Path
+
+    from server.process.asr_func.live_mic import record_utterance_until_silence
+
+    path = Path(output_file)
+    if path.exists():
+        path.unlink()
+
+    saved = record_utterance_until_silence(path, samplerate=samplerate)
+    if not saved:
+        return ""
+
+    print("Transcribing…")
+    transcription = transcribe_audio_file(model, path)
+    print(f"Transcription: {transcription}")
+    return transcription
+
+
 def record_and_transcribe(model, output_file="recording.wav", samplerate=44100):
     """
     Simple push-to-talk recorder: record -> save -> transcribe -> return text
