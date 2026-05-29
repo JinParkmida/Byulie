@@ -1,4 +1,4 @@
-"""Repository paths shared by Byulie server modules."""
+"""Windows-friendly repository paths shared by Byulie server modules."""
 
 from pathlib import Path
 

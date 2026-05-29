@@ -1,0 +1,7 @@
+# Windows 11 64-bit runtime dependencies for Byulie.
+faster-whisper
+requests
+PyYAML
+sounddevice
+soundfile
+gradio
