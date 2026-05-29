@@ -25,6 +25,26 @@ function Test-CommandExists {
     return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+function Assert-Windows11X64 {
+    if ($SkipWindowsCheck) {
+        Write-Info "Skipping Windows 11 64-bit validation because -SkipWindowsCheck was provided."
+        return
+    }
+
+    if ($PSVersionTable.PSEdition -eq "Core" -and -not $IsWindows) {
+        throw "Byulie's launcher is made for Windows 11 64-bit. Run start-byulie.bat from Windows 11, not this operating system."
+    }
+
+    $os = Get-CimInstance -ClassName Win32_OperatingSystem
+    $caption = [string]$os.Caption
+    $architecture = [string]$os.OSArchitecture
+    if ($caption -notlike "*Windows 11*" -or $architecture -notlike "*64*") {
+        throw "Byulie is configured for Windows 11 64-bit. Detected '$caption' ($architecture)."
+    }
+
+    Write-Info "Validated target OS: $caption ($architecture)."
+}
+
 function Get-RepositoryRoot {
     $scriptPath = $PSCommandPath
     if (-not $scriptPath) {
@@ -34,32 +54,69 @@ function Get-RepositoryRoot {
     return (Resolve-Path (Join-Path (Split-Path -Parent $scriptPath) "..")).Path
 }
 
-function Get-PythonCommand {
+function Test-PythonCandidate {
+    param(
+        [Parameter(Mandatory = $true)][string]$Command,
+        [string[]]$PrefixArguments = @()
+    )
+
+    $checkCode = @'
+import platform
+import sys
+major, minor = sys.version_info[:2]
+is_supported_version = (major == 3 and minor in (10, 11))
+is_64bit = platform.architecture()[0] == "64bit"
+print(f"{major}.{minor};{platform.architecture()[0]}")
+sys.exit(0 if is_supported_version and is_64bit else 1)
+'@
+
+    $output = & $Command @PrefixArguments -c $checkCode 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return $null
+    }
+
+    return [PSCustomObject]@{
+        Command = $Command
+        PrefixArguments = $PrefixArguments
+        Version = $output
+    }
+}
+
+function Get-WindowsPython {
+    $candidates = @()
+
     if (Test-CommandExists "py") {
-        return "py"
+        $candidates += [PSCustomObject]@{ Command = "py"; PrefixArguments = @("-3.11-64") }
+        $candidates += [PSCustomObject]@{ Command = "py"; PrefixArguments = @("-3.10-64") }
+        $candidates += [PSCustomObject]@{ Command = "py"; PrefixArguments = @("-3-64") }
     }
 
     if (Test-CommandExists "python") {
-        return "python"
+        $candidates += [PSCustomObject]@{ Command = "python"; PrefixArguments = @() }
     }
 
-    throw "Python was not found. Install Python 3.10 or 3.11 and enable 'Add Python to PATH'."
+    foreach ($candidate in $candidates) {
+        $validated = Test-PythonCandidate -Command $candidate.Command -PrefixArguments $candidate.PrefixArguments
+        if ($validated) {
+            Write-Info "Using Python $($validated.Version) via '$($candidate.Command) $($candidate.PrefixArguments -join ' ')'."
+            return $validated
+        }
+    }
+
+    throw "Python 3.10 or 3.11 64-bit was not found. Install 64-bit Python for Windows and enable 'Add Python to PATH'."
 }
 
 function Invoke-Python {
     param(
-        [Parameter(Mandatory = $true)][string]$PythonCommand,
+        [Parameter(Mandatory = $true)]$Python,
         [Parameter(Mandatory = $true)][string[]]$Arguments
     )
 
-    if ($PythonCommand -eq "py") {
-        & py -3 @Arguments
-    } else {
-        & $PythonCommand @Arguments
-    }
-
+    $command = $Python.Command
+    $prefixArguments = @($Python.PrefixArguments)
+    & $command @prefixArguments @Arguments
     if ($LASTEXITCODE -ne 0) {
-        throw "Python command failed: $PythonCommand $($Arguments -join ' ')"
+        throw "Python command failed: $command $($prefixArguments -join ' ') $($Arguments -join ' ')"
     }
 }
 
@@ -68,20 +125,32 @@ function Get-VenvPythonPath {
     return Join-Path $RepoRoot ".venv\Scripts\python.exe"
 }
 
+function Assert-VenvPythonX64 {
+    param([Parameter(Mandatory = $true)][string]$VenvPython)
+
+    $checkCode = 'import platform, sys; sys.exit(0 if platform.architecture()[0] == "64bit" else 1)'
+    & $VenvPython -c $checkCode
+    if ($LASTEXITCODE -ne 0) {
+        throw "The virtual environment is not using 64-bit Python. Delete .venv and rerun start-byulie.bat with 64-bit Python installed."
+    }
+}
+
 function Ensure-VirtualEnvironment {
     param(
         [Parameter(Mandatory = $true)][string]$RepoRoot,
-        [Parameter(Mandatory = $true)][string]$PythonCommand
+        [Parameter(Mandatory = $true)]$Python
     )
 
     $venvPython = Get-VenvPythonPath -RepoRoot $RepoRoot
     if (Test-Path $venvPython) {
-        Write-Info "Using existing virtual environment at .venv."
+        Assert-VenvPythonX64 -VenvPython $venvPython
+        Write-Info "Using existing Windows virtual environment at .venv."
         return $venvPython
     }
 
-    Write-Info "Creating virtual environment at .venv."
-    Invoke-Python -PythonCommand $PythonCommand -Arguments @("-m", "venv", ".venv")
+    Write-Info "Creating Windows virtual environment at .venv."
+    Invoke-Python -Python $Python -Arguments @("-m", "venv", ".venv")
+    Assert-VenvPythonX64 -VenvPython $venvPython
     return $venvPython
 }
 
@@ -98,17 +167,16 @@ function Install-Requirements {
 
     $requirements = Join-Path $RepoRoot "requirements.txt"
     if (-not (Test-Path $requirements)) {
-        Write-Warn "requirements.txt was not found; skipping dependency installation."
-        return
+        throw "requirements.txt was not found. This Windows launcher expects dependencies to be listed there."
     }
 
-    Write-Info "Upgrading pip."
+    Write-Info "Upgrading pip in the Windows virtual environment."
     & $VenvPython -m pip install --upgrade pip
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to upgrade pip."
     }
 
-    Write-Info "Installing Python dependencies from requirements.txt."
+    Write-Info "Installing Windows Python dependencies from requirements.txt."
     & $VenvPython -m pip install -r $requirements
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to install requirements.txt."
@@ -122,11 +190,11 @@ function Test-OllamaModel {
     }
 
     if (-not (Test-CommandExists "ollama")) {
-        Write-Warn "Ollama is not on PATH. Install Ollama for Windows before chatting with Byulie."
+        Write-Warn "Ollama for Windows is not on PATH. Install Ollama for Windows before chatting with Byulie."
         return
     }
 
-    Write-Info "Checking Ollama installation."
+    Write-Info "Checking Ollama for Windows installation."
     & ollama --version
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "Ollama did not respond to --version. Start Ollama manually if Byulie cannot connect."
@@ -153,12 +221,13 @@ function Start-Byulie {
     }
 }
 
+Assert-Windows11X64
 $repoRoot = Get-RepositoryRoot
 Set-Location $repoRoot
 
 Write-Info "Repository root: $repoRoot"
-$pythonCommand = Get-PythonCommand
-$venvPython = Ensure-VirtualEnvironment -RepoRoot $repoRoot -PythonCommand $pythonCommand
+$python = Get-WindowsPython
+$venvPython = Ensure-VirtualEnvironment -RepoRoot $repoRoot -Python $python
 Install-Requirements -RepoRoot $repoRoot -VenvPython $venvPython
 Test-OllamaModel
 Start-Byulie -RepoRoot $repoRoot -VenvPython $venvPython -LaunchMode $Mode

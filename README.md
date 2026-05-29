@@ -23,7 +23,51 @@ Byulie is my hands-on exploration of how a voice AI pipeline fits together: spee
 
 ## Overview
 
-Byulie listens through the microphone, remembers conversation context in a local JSON file, replies via a local Ollama model, and speaks through a local GPT-SoVITS server.
+| Layer | Default | Notes |
+| --- | --- | --- |
+| Operating system | Windows 11 64-bit | Primary supported target for this guide |
+| Local LLM | Ollama + `qwen3:4b` | Local model runtime and default chat model |
+| Speech-to-text | Faster-Whisper | Local ASR; default config uses `base.en` on CPU |
+| Text-to-speech | Local GPT-SoVITS server | Local voice server expected at the configured endpoint |
+| Memory | Local JSON file | Default conversation history stored in `byulie_chat_history.json` |
+| Configuration | `character_config.yaml` | Controls LLM, ASR, TTS, prompt, and memory settings |
+
+## Windows 11 64-bit Prerequisites
+
+Byulie is intentionally targeted at Windows 11 64-bit. Install these before running Byulie:
+
+- **Windows 11 64-bit**.
+- **64-bit Python 3.10 or Python 3.11 for Windows**.
+  - During installation, enable **Add Python to PATH**.
+  - Verify with `python --version` in PowerShell.
+  - The launcher rejects 32-bit Python because the audio and local AI dependencies are intended for 64-bit Windows.
+- **Git for Windows**.
+  - Verify with `git --version`.
+- **FFmpeg on PATH**.
+  - Install FFmpeg and make sure `ffmpeg.exe` is available from PowerShell.
+  - Verify with `ffmpeg -version`.
+- **Ollama for Windows**.
+  - Install from <https://ollama.com/download/windows>.
+  - Verify with `ollama --version`.
+- **GPT-SoVITS installed locally**.
+  - Byulie expects a local GPT-SoVITS HTTP server, not a hosted TTS service.
+- **Optional NVIDIA GPU acceleration**.
+  - Install a current NVIDIA driver for your GPU.
+  - Install CUDA only if the local components you run require it.
+  - If VRAM is limited, keep Faster-Whisper on CPU and use smaller Ollama models.
+
+## Recommended Hardware
+
+Byulie can run with CPU-heavy defaults, but voice generation and local LLM inference are smoother with a dedicated NVIDIA GPU.
+
+Suggested starting point:
+
+- 16 GB system RAM or more.
+- NVIDIA GPU with 8 GB VRAM or more for a more comfortable local AI workflow.
+- SSD storage for model caches and faster startup.
+- Working microphone and speakers/headphones.
+
+For 8 GB VRAM systems, start with `qwen3:4b` before trying larger local models. Running a larger LLM, Faster-Whisper on GPU, and GPT-SoVITS at the same time may exceed available VRAM.
 
 | Principle | Detail |
 | --- | --- |
